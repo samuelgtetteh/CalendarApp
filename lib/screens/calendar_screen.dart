@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/event.dart';
+import '../services/event_storage.dart';
 import '../widgets/calendar_grid.dart';
 import 'event_form_screen.dart';
 
@@ -14,6 +15,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _focusedMonth;
   late DateTime _selectedDay;
   final Map<String, List<Event>> _events = {};
+  bool _loading = true;
 
   static const _monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -31,7 +33,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final now = DateTime.now();
     _focusedMonth = DateTime(now.year, now.month);
     _selectedDay = DateTime(now.year, now.month, now.day);
+    _loadEvents();
   }
+
+  Future<void> _loadEvents() async {
+    final stored = await EventStorage.load();
+    if (!mounted) return;
+    setState(() {
+      _events.addAll(stored);
+      _loading = false;
+    });
+  }
+
+  Future<void> _save() => EventStorage.save(_events);
 
   List<Event> get _selectedDayEvents =>
       List.unmodifiable(_events[Event.keyFor(_selectedDay)] ?? []);
@@ -58,6 +72,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (!mounted) return;
     if (result != null) {
       setState(() => (_events[result.key] ??= []).add(result));
+      await _save();
     }
   }
 
@@ -77,13 +92,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _selectedDay = result.date;
         _focusedMonth = DateTime(result.date.year, result.date.month);
       });
+      await _save();
     }
   }
 
-  void _deleteEvent(Event event) => setState(() {
-        _events[event.key]?.removeWhere((e) => e.id == event.id);
-        _events.removeWhere((_, list) => list.isEmpty);
-      });
+  void _deleteEvent(Event event) {
+    setState(() {
+      _events[event.key]?.removeWhere((e) => e.id == event.id);
+      _events.removeWhere((_, list) => list.isEmpty);
+    });
+    _save();
+  }
 
   String _formattedSelectedDay() {
     final weekday = _weekdayNames[_selectedDay.weekday % 7];
@@ -95,6 +114,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final events = _selectedDayEvents;
+
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
